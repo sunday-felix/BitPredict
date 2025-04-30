@@ -87,7 +87,7 @@
     (let
         (
             (market (unwrap! (map-get? markets market-id) err-not-found))
-            (current-block block-height)
+            (current-block stacks-block-height)
         )
         (asserts! (and (>= current-block (get start-block market)) 
                       (< current-block (get end-block market))) 
@@ -129,7 +129,7 @@
             (market (unwrap! (map-get? markets market-id) err-not-found))
         )
         (asserts! (is-eq tx-sender (var-get oracle-address)) err-owner-only)
-        (asserts! (>= block-height (get end-block market)) err-market-closed)
+        (asserts! (>= stacks-block-height (get end-block market)) err-market-closed)
         (asserts! (not (get resolved market)) err-market-closed)
         (asserts! (> end-price u0) err-invalid-parameter)
 
@@ -181,5 +181,61 @@
                 (ok payout)
             )
         )
+    )
+)
+
+;; Read-Only Functions
+
+;; Returns market details
+(define-read-only (get-market (market-id uint))
+    (map-get? markets market-id)
+)
+
+;; Returns user prediction details
+(define-read-only (get-user-prediction (market-id uint) (user principal))
+    (map-get? user-predictions {market-id: market-id, user: user})
+)
+
+;; Returns contract balance
+(define-read-only (get-contract-balance)
+    (stx-get-balance (as-contract tx-sender))
+)
+
+;; Administrative Functions
+
+;; Updates oracle address
+(define-public (set-oracle-address (new-address principal))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (is-eq new-address new-address) err-invalid-parameter)
+        (ok (var-set oracle-address new-address))
+    )
+)
+
+;; Updates minimum stake requirement
+(define-public (set-minimum-stake (new-minimum uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (> new-minimum u0) err-invalid-parameter)
+        (ok (var-set minimum-stake new-minimum))
+    )
+)
+
+;; Updates platform fee percentage
+(define-public (set-fee-percentage (new-fee uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (<= new-fee u100) err-invalid-parameter)
+        (ok (var-set fee-percentage new-fee))
+    )
+)
+
+;; Withdraws accumulated fees
+(define-public (withdraw-fees (amount uint))
+    (begin
+        (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+        (asserts! (<= amount (stx-get-balance (as-contract tx-sender))) err-insufficient-balance)
+        (try! (as-contract (stx-transfer? amount (as-contract tx-sender) contract-owner)))
+        (ok amount)
     )
 )
